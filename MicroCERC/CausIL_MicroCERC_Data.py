@@ -445,8 +445,8 @@ if __name__ == "__main__":
             # pagerank_scores = {i: score for i, score in enumerate(pagerank_scores)}
             pagerank_scores = nx.pagerank(global_g, max_iter=10000)
             sorted_dict_node_pagerank = dict(sorted(pagerank_scores.items(), key=lambda item: item[1], reverse=True))
-            sorted_dict_node_pagerank = {index_reverse_mapping[index]: sorted_dict_node_pagerank[index] for index in
-                                         sorted_dict_node_pagerank}
+            # sorted_dict_node_pagerank = {index_reverse_mapping[index]: sorted_dict_node_pagerank[index] for index in
+            #                              sorted_dict_node_pagerank}
             with open(base_output_dir + '/result-' + simple.label + '.log', "a") as output_file:
                 top_k = top_k_node(sorted_dict_node_pagerank, simple.root_cause, output_file)
                 top_k_list.append(top_k)
