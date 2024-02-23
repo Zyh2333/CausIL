@@ -16,6 +16,7 @@ from graph import NodeType
 import os
 from python.scores import *
 from python.bnutils import *
+from sknetwork.ranking import PageRank
 
 
 def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, score_func):
@@ -33,6 +34,7 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
 
     # 根据call graph，取上游服务的工作负载指标，取下游服务的延时、异常指标，构建指标集合
     # For each service, construct a graph individually and then merge them
+    all_new_data = pd.DataFrame()
     new_data = pd.DataFrame()
     g_list = []
     for i, service in enumerate(dag_cg.nodes):
@@ -97,6 +99,8 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
         # new_data = preprocess_data(serv_data)
         new_data = pd.concat([os_data, serv_data, svc_data], axis=1).fillna(0)
         new_data = new_data.loc[:, ~new_data.columns.duplicated()]
+        all_new_data = pd.concat([all_new_data, new_data], axis=1).fillna(0)
+        all_new_data = all_new_data.loc[:, ~all_new_data.columns.duplicated()]
 
         # Use domain knowledge or not
         if dk == 'N':
@@ -130,6 +134,17 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
         print('\n')
         g_list.append(g)
     global_g = combine_graph(g_list)
+    index_mapping = {node: i for i, node in enumerate(global_g.nodes)}
+    index_reverse_mapping = {i: node for i, node in enumerate(global_g.nodes)}
+    nx.set_node_attributes(global_g, index_mapping, "index")
+
+    # 构建邻接矩阵
+    n = len(global_g.nodes)
+    adj_matrix = np.zeros((n, n))
+    for edge in global_g.edges:
+        source_index = global_g.nodes[edge[0]]["index"]
+        target_index = global_g.nodes[edge[1]]["index"]
+        adj_matrix[source_index, target_index] = all_new_data[edge[0]].corr(all_new_data[edge[1]])
     for node in global_g.nodes:
         # global_g.nodes[node]['type'] = dag_cg.nodes[node]['type']
         # try:
@@ -142,7 +157,35 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
         except:
             pass
 
-    return dag_cg, global_g, edge_map, service_graph, fges_time, new_data.T.drop_duplicates().T
+    return dag_cg, global_g, adj_matrix, index_reverse_mapping, edge_map, service_graph, fges_time, new_data.T.drop_duplicates().T
+
+
+# def pagerank(adjacency_matrix, damping_factor=0.85, tolerance=1e-6, max_iterations=10000):
+#     n = adjacency_matrix.shape[0]
+#     adjacency_matrix = adjacency_matrix.astype(float)
+#
+#     # 将零列替换为1/n
+#     sum_outlinks = adjacency_matrix.sum(axis=1, keepdims=True)
+#     zero_columns = np.where(sum_outlinks == 0)[0]
+#     adjacency_matrix[zero_columns, :] = 1 / n
+#
+#     # 转换为马尔科夫矩阵
+#     transition_matrix = adjacency_matrix / adjacency_matrix.sum(axis=1, keepdims=True)
+#
+#     # 初始化 PageRank 向量
+#     pagerank_vector = np.ones((n, 1)) / n
+#
+#     # 迭代计算 PageRank
+#     for _ in range(max_iterations):
+#         new_pagerank_vector = (1 - damping_factor) / n + damping_factor * np.dot(transition_matrix.T, pagerank_vector)
+#
+#         # 检查收敛
+#         if np.linalg.norm(new_pagerank_vector - pagerank_vector) < tolerance:
+#             break
+#
+#         pagerank_vector = new_pagerank_vector
+#
+#     return pagerank_vector.flatten()
 
 
 if __name__ == "__main__":
@@ -394,10 +437,16 @@ if __name__ == "__main__":
                                                                             , graphs_index_time_map)
             # train(simple.label, simple.root_cause, anomaly_index, hetero_graphs_combine, base_output_dir, config.train, rnn=config.rnn_type,
             #       attention=config.attention)
-            _, g, _, _, _, _ = run_graph_discovery_instance_sum_MicroCERC(next(iter(graphs_combine.values())), None,
-                                                                          None, 'N', 'P2')
-            pagerank_scores = nx.pagerank(g, alpha=0.85)
+            _, global_g, adj_matrix, index_reverse_mapping, _, _, _, _ = run_graph_discovery_instance_sum_MicroCERC(
+                next(iter(graphs_combine.values())), None,
+                None, 'N', 'P2')
+            # pagerank = PageRank()
+            # pagerank_scores = pagerank.fit_transform(adj_matrix)
+            # pagerank_scores = {i: score for i, score in enumerate(pagerank_scores)}
+            pagerank_scores = nx.pagerank(global_g, max_iter=10000)
             sorted_dict_node_pagerank = dict(sorted(pagerank_scores.items(), key=lambda item: item[1], reverse=True))
+            sorted_dict_node_pagerank = {index_reverse_mapping[index]: sorted_dict_node_pagerank[index] for index in
+                                         sorted_dict_node_pagerank}
             with open(base_output_dir + '/result-' + simple.label + '.log', "a") as output_file:
                 top_k = top_k_node(sorted_dict_node_pagerank, simple.root_cause, output_file)
                 top_k_list.append(top_k)
