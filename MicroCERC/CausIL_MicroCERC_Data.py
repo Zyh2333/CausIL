@@ -5,7 +5,7 @@ import MetricCollector
 import time
 from typing import Dict, List
 from graph import combine_ns_graphs, graph_weight_ns, graph_weight, GraphIndex, graph_index, get_hg, \
-    HeteroWithGraphIndex, combine_graph, calculate_graph_score
+    HeteroWithGraphIndex, combine_graph_node, calculate_graph_score
 from anomaly_detection import get_anomaly_by_df
 from MicroCERC.util.utils import time_string_2_timestamp, timestamp_2_time_string, df_time_limit, top_k_node
 from anomaly_detection import get_timestamp_index
@@ -133,7 +133,7 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
         service_graph.append(dag)
         print('\n')
         g_list.append(g)
-    global_g = combine_graph(g_list)
+    global_g = combine_graph_node(g_list)
     index_mapping = {node: i for i, node in enumerate(global_g.nodes)}
     index_reverse_mapping = {i: node for i, node in enumerate(global_g.nodes)}
     nx.set_node_attributes(global_g, index_mapping, "index")
@@ -141,10 +141,18 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
     # 构建邻接矩阵
     n = len(global_g.nodes)
     adj_matrix = np.zeros((n, n))
+
+    def max_corr(pd1, pd2):
+        max_c = -1
+        for column1 in pd1.columns:
+            for column2 in pd2.columns:
+                corr = pd1[column1].corr(pd2[column2])
+                max_c = max(max_c, corr)
+        return max_c
     for edge in global_g.edges:
         source_index = global_g.nodes[edge[0]]["index"]
         target_index = global_g.nodes[edge[1]]["index"]
-        adj_matrix[source_index, target_index] = all_new_data[edge[0]].corr(all_new_data[edge[1]])
+        adj_matrix[source_index, target_index] = max_corr(dag_cg.nodes[edge[0]]['data'], dag_cg.nodes[edge[1]]['data'])
     for node in global_g.nodes:
         # global_g.nodes[node]['type'] = dag_cg.nodes[node]['type']
         # try:
@@ -153,7 +161,7 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
         # except:
         #     pass
         try:
-            global_g.nodes[node]['data'] = pd.DataFrame(new_data[node])
+            global_g.nodes[node]['data'] = dag_cg.nodes[node]['data']
         except:
             pass
 
