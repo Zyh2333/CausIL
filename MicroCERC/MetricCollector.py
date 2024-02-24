@@ -111,7 +111,7 @@ def collect_graph(config: Config, _dir: str, collect: bool) -> Dict[str, nx.DiGr
                                    'server-2': 'edge-1',
                                    'server-3': 'edge-2',
                                    'dell2018': 'edge-2'}
-    masks = ['ingress', 'unknown', 'load-pod', 'load-pod-cloud', 'istio-ingressgateway', 'recommendationservice-edge', 'productpage-v1-edge', 'productcatalogservice-edge', 'currencyservice-edge', 'paymentservice-edge', 'checkoutservice-edge', 'carts-cloud-czcwz', 'carts-cloud-hxv26', 'carts-cloud-jjn2j', 'carts-cloud-jlt67', 'horsecoder-pay-deployment-f5b6d5d4b-xcqss', 'horsecoder-pay-deployment-f5b6d5d4b-959jd', 'horsecoder-pay-deployment-f5b6d5d4b-ndgpx', 'horsecoder-pay-deployment-f5b6d5d4b-t7n24']
+    masks = ['ingress', 'unknown', 'load-pod', 'load-pod-cloud', 'istio-ingressgateway', 'recommendationservice-edge', 'details-v1-edge', 'reviews-v1-edge', 'productcatalogservice-edge', 'currencyservice-edge', 'paymentservice-edge', 'checkoutservice-edge', 'carts-cloud-jjn2j', 'carts-cloud-jlt67', 'carts-cloud-czcwz', 'carts-cloud-hxv26', 'horsecoder-pay-deployment-f5b6d5d4b-tn6vt', 'horsecoder-pay-web-deployment-7b85dfccc9-cwdph', 'horsecoder-pay-web-deployment-855fb4bb88-f98sq']
     for timestamp in combine_timestamp:
         g = nx.DiGraph()
         svc_call_list = svc_timestamp_map.get(timestamp, None)
