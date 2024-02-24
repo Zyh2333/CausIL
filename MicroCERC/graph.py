@@ -91,6 +91,42 @@ def combine_graph(graphs: [nx.DiGraph]) -> nx.DiGraph:
     return g
 
 
+def combine_graph_node(graphs: [nx.DiGraph]) -> nx.DiGraph:
+    g = nx.DiGraph()
+
+    def get_node_from_metrics(metrics):
+        if '&' in metrics:
+            return metrics[:metrics.find('&')]
+        if 'node' in metrics:
+            return metrics[6:metrics.find('_')]
+        if '_' in metrics:
+            return metrics[:metrics.rfind('_')]
+
+    for graph in graphs:
+        for edge in graph.edges:
+            source = edge[0]
+            source = get_node_from_metrics(source)
+            destination = edge[1]
+            destination = get_node_from_metrics(destination)
+            g.add_edge(source, destination)
+            try:
+                g.nodes[source]['type'] = graph.nodes[source]['type']
+                g.nodes[destination]['type'] = graph.nodes[destination]['type']
+            except:
+                pass
+            try:
+                g.nodes[source]['center'] = graph.nodes[source]['center']
+                g.nodes[destination]['center'] = graph.nodes[destination]['center']
+            except:
+                pass
+            try:
+                g.nodes[source]['data'] = graph.nodes[source]['data']
+                g.nodes[destination]['data'] = graph.nodes[destination]['data']
+            except:
+                pass
+    return g
+
+
 def combine_timestamps_graph(graphs_at_timestamp: Dict[str, nx.DiGraph], namespace, topology_change_time_window_list,
                              window_size=600) -> \
         Dict[str, nx.DiGraph]:
