@@ -12,11 +12,13 @@ from anomaly_detection import get_timestamp_index
 import pandas as pd
 from CausIL import runner
 from statistics import print_pr
-from graph import NodeType
+from graph import NodeType, graph_dump
 import os
 from python.scores import *
 from python.bnutils import *
 from sknetwork.ranking import PageRank
+import pytz
+from datetime import datetime
 
 
 def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, score_func):
@@ -197,10 +199,7 @@ def run_graph_discovery_instance_sum_MicroCERC(dag_cg, datapath, dataset, dk, sc
 
 
 if __name__ == "__main__":
-    b_dir = '/Users/zhuyuhan/Documents/391-WHU/experiment/researchProject/MicroCERC/data/'
     namespaces = ['bookinfo', 'hipster', 'cloud-sock-shop', 'horsecoder-test']
-    config = Config()
-
 
     class Simple:
         def __init__(self, global_now_time, global_end_time, label, root_cause, dir):
@@ -210,198 +209,228 @@ if __name__ == "__main__":
             self.root_cause = root_cause
             self.dir = dir
 
+    def time_string_2_timestamp_beijing(time_string):
+        # 设置北京时区
+        beijing_tz = pytz.timezone('Asia/Shanghai')
 
-    simples: List[Simple] = [
-        Simple(
-            1706227200, 1706227980, 'label-reviews-v3-edge-cpu-1', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-cpu-1'
-        ),
-        Simple(
-            1706228100, 1706228880, 'label-reviews-v3-edge-cpu-2', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-cpu-2'
-        ),
-        Simple(
-            1706229000, 1706229780, 'label-reviews-v3-edge-cpu-3', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-cpu-3'
-        ),
-        Simple(
-            1706229900, 1706230680, 'label-reviews-v3-edge-cpu-4', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-cpu-4'
-        ),
-        Simple(
-            1706230800, 1706231580, 'label-reviews-v3-edge-cpu-5', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-cpu-5'
-        ),
-        Simple(
-            1706231700, 1706232480, 'label-reviews-v3-edge-mem-1', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-mem-1'
-        ),
-        Simple(
-            1706232600, 1706233380, 'label-reviews-v3-edge-mem-2', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-mem-2'
-        ),
-        Simple(
-            1706233500, 1706234280, 'label-reviews-v3-edge-mem-3', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-mem-3'
-        ),
-        Simple(
-            1706234400, 1706235180, 'label-reviews-v3-edge-mem-4', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-mem-4'
-        ),
-        Simple(
-            1706235300, 1706236080, 'label-reviews-v3-edge-mem-5', 'reviews-v3-edge', 'abnormal/bookinfo/reviews-v3-edge/bookinfo-reviews-v3-edge-mem-5'
-        ),
-    ]
+        # 将时间字符串转换为 datetime 对象
+        dt_object = datetime.strptime(time_string, '%Y-%m-%d %H:%M:%S')
+
+        # 将 datetime 对象转换为北京时间
+        dt_object = beijing_tz.localize(dt_object)
+
+        # 使用 timestamp() 将 datetime 对象转换为时间戳
+        return int(dt_object.timestamp())
+
+    def read_label_logs(namespace_path, label_service, simple_list: [Simple], minute):
+        label_file_folder = os.path.join(namespace_path, label_service)
+        dirs = []
+        for item in os.listdir(label_file_folder):
+            if os.path.isdir(os.path.join(label_file_folder, item)):
+                dirs.append(item)
+        if simple_list is None:
+            simple_list = []
+        file_path = os.path.join(label_file_folder, label_service + '_label.txt')
+        try:
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+                # 如果文件为空则跳过
+                if not lines:
+                    return simple_list
+                for line in lines:
+                    if 'cpu_' in line or 'mem_' in line or 'net_' in line:
+                        label_line = line.strip()
+                        label_line_label = label_line.split('_')[1] + '_' + label_line.split('_')[3]
+                        for dr in dirs:
+                            dr_splits = dr.split('_')
+                            if label_line_label == (dr_splits[len(dr_splits) - 2] + '_' + dr_splits[len(dr_splits) - 1]):
+                                root_cause = dr[dr.rfind(label_service):dr.rfind(label_line_label) - 1]
+                                dd = dr
+                        if root_cause is None:
+                            sys.exit(1)
+                        simple = Simple(None, None, label_line, root_cause, dd)
+                    elif 'start create' in line:
+                        begin = line[:19]
+                    elif 'finish delete' in line:
+                        end = line[:19]
+                        simple.global_now_time = time_string_2_timestamp_beijing(begin) - 30 * (minute - 3)
+                        simple.global_end_time = time_string_2_timestamp_beijing(end) + 30 * (minute - 3)
+                        simple_list.append(simple)
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+
+    base_dir = '/Users/zhuyuhan/Documents/391-WHU/experiment/researchProject/MicroCERC/'
+    top_k_services = []
+    root_cause_services = []
+    root_cause_namespace_dir = base_dir + 'data/abnormal/hipster_chaos_2'
+    for item in os.listdir(root_cause_namespace_dir):
+        if os.path.isdir(os.path.join(root_cause_namespace_dir, item)):
+            root_cause_services.append(item)
+    base_output_dir = root_cause_namespace_dir
     top_k_list = []
-    for simple in simples:
-        print(simple.label)
-        global_now_time = simple.global_now_time
-        global_end_time = simple.global_end_time
-        now = int(time.time())
-        if global_now_time > now:
-            sys.exit("begin time is after now time")
-        if global_end_time > now:
-            global_end_time = now
+    for root_cause_service in root_cause_services:
+        top_k_service = []
+        simples: List[Simple] = []
+        read_label_logs(base_output_dir, root_cause_service, simples, 15)
+        for simple in simples:
+            config = Config()
+            print(simple.label)
+            global_now_time = simple.global_now_time
+            global_end_time = simple.global_end_time
+            now = int(time.time())
+            if global_now_time > now:
+                sys.exit("begin time is after now time")
+            if global_end_time > now:
+                global_end_time = now
 
-        folder = '.'
-        graphs_time_window: Dict[str, Dict[str, nx.DiGraph]] = {}
-        base_dir = b_dir + str(simple.dir)
-        base_output_dir = 'result'
-        time_pair_list = []
-        time_pair_index = {}
-        now_time = global_now_time
-        end_time = global_end_time
-        while now_time < end_time:
-            config.start = int(round(now_time))
-            config.end = int(round(now_time + config.duration))
-            if config.end > end_time:
-                config.end = end_time
-            now_time += config.duration + config.step
-            time_pair_list.append((config.start, config.end))
-            df = pd.read_csv(base_dir + '/hipster/' + 'latency.csv')
-            df = df_time_limit(df, config.start, config.end)
-            df_time_index, df_index_time = get_timestamp_index(df)
-            time_pair_index[(config.start, config.end)] = df_time_index
-        # 获取拓扑有变动的时间窗口
-        topology_change_time_window_list = []
-        for ns in namespaces:
-            config.namespace = ns
-            data_folder = base_dir + '/' + config.namespace
-            time_change_ns = [timestamp_2_time_string(global_now_time), timestamp_2_time_string(global_end_time)]
-            topology_change_time_window_list.extend(time_change_ns)
-        topology_change_time_window_list = sorted(list(set(topology_change_time_window_list)))
-        for ns in namespaces:
-            config.namespace = ns
-            config.svcs.clear()
-            config.pods.clear()
-            count = 1
-            data_folder = base_dir + '/' + config.namespace
-            for time_pair in time_pair_list:
-                config.start = time_pair[0]
-                config.end = time_pair[1]
-                print('第' + str(count) + '次获取 [' + config.namespace + '] 数据')
-                graphs_ns_time_window = MetricCollector.collect_and_build_graphs(config, data_folder,
-                                                                                 topology_change_time_window_list,
-                                                                                 config.window_size, config.collect)
-                graph_time_key = str(time_pair[0]) + '-' + str(time_pair[1])
-                if graph_time_key not in graphs_time_window:
-                    graphs_time_window[graph_time_key] = graphs_ns_time_window
-                else:
-                    graphs_time_window[graph_time_key].update(graphs_ns_time_window)
-                config.pods.clear()
-                count += 1
-        config.start = global_now_time
-        config.end = global_end_time
-        MetricCollector.collect_node(config, base_dir + '/node', config.collect)
-        # 非云边基于指标异常检测
-        anomalies = {}
-        anomalies_index = {}
-        anomaly_time_series = {}
-        for time_pair in time_pair_list:
-            time_key = str(time_pair[0]) + '-' + str(time_pair[1])
+            folder = '.'
+            graphs_time_window: Dict[str, Dict[str, nx.DiGraph]] = {}
+            b_dir = root_cause_namespace_dir + '/' + root_cause_service + '/' + str(simple.dir)
+            b_output_dir = 'result'
+            time_pair_list = []
+            time_pair_index = {}
+            now_time = global_now_time
+            end_time = global_end_time
+            while now_time < end_time:
+                config.start = int(round(now_time))
+                config.end = int(round(now_time + config.duration))
+                if config.end > end_time:
+                    config.end = end_time
+                now_time += config.duration + config.step
+                time_pair_list.append((config.start, config.end))
+                df = pd.read_csv(b_dir + '/hipster/metrics/' + 'latency.csv')
+                df = df_time_limit(df, config.start, config.end)
+                df_time_index, df_index_time = get_timestamp_index(df)
+                time_pair_index[(config.start, config.end)] = df_time_index
+            # 获取拓扑有变动的时间窗口
+            topology_change_time_window_list = []
             for ns in namespaces:
-                data_folder = base_dir + '/' + ns
-                anomaly_list = anomalies.get(time_key, [])
-                anomalies_ns, anomaly_time_series_index = get_anomaly_by_df(base_output_dir, data_folder, simple.label,
-                                                                            time_pair[0], time_pair[1])
-                anomaly_list.extend(anomalies_ns)
-                anomaly_list = list(set(anomaly_list))
-                anomalies[time_key] = anomaly_list
-                anomaly_time_series_list = anomaly_time_series.get(time_key, {})
-                anomaly_time_series_list = {**anomaly_time_series_list, **anomaly_time_series_index}
-                anomaly_time_series[time_key] = anomaly_time_series_list
-            anomalies_index[time_key] = {a: i for i, a in enumerate(anomalies[time_key])}
-        # 赋权ns子图
-        for time_window in graphs_time_window:
-            anomaly_index = anomalies_index[time_window]
-            t_index_time_window = time_pair_index[(int(time_window.split('-')[0]), int(time_window.split('-')[1]))]
-            for graph_time_window in graphs_time_window[time_window]:
-                graph: nx.DiGraph = graphs_time_window[time_window][graph_time_window]
-                begin_t = graph_time_window.split('-')[0]
-                end_t = graph_time_window.split('-')[1]
-                ns = graph_time_window[graph_time_window.index(end_t) + len(end_t) + 1:]
-                graph_weight_ns(begin_t, end_t, graph, base_dir, ns)
-            # 合并混合部署图
-            graphs_combine: Dict[str, nx.DiGraph] = combine_ns_graphs(graphs_time_window[time_window])
-            graphs_anomaly_time_series_index = {}
-            graphs_anomaly_time_series_index_map = {}
-            graphs_index_time_map = {}
-            for time_combine in graphs_combine:
-                graph_index_time_map = {}
-                graph = graphs_combine[time_combine]
-                begin_t = time_combine.split('-')[0]
-                end_t = time_combine.split('-')[1]
+                config.namespace = ns
+                data_folder = b_dir + '/' + config.namespace + '/metrics'
+                time_change_ns = [timestamp_2_time_string(global_now_time), timestamp_2_time_string(global_end_time)]
+                topology_change_time_window_list.extend(time_change_ns)
+            topology_change_time_window_list = sorted(list(set(topology_change_time_window_list)))
+            for ns in namespaces:
+                config.namespace = ns
+                config.svcs.clear()
+                config.pods.clear()
+                count = 1
+                data_folder = b_dir + '/' + config.namespace + '/metrics'
+                for time_pair in time_pair_list:
+                    config.start = time_pair[0]
+                    config.end = time_pair[1]
+                    print('第' + str(count) + '次获取 [' + config.namespace + '] 数据')
+                    graphs_ns_time_window = MetricCollector.collect_and_build_graphs(config, data_folder,
+                                                                                     topology_change_time_window_list,
+                                                                                     config.window_size, config.collect)
+                    graph_time_key = str(time_pair[0]) + '-' + str(time_pair[1])
+                    if graph_time_key not in graphs_time_window:
+                        graphs_time_window[graph_time_key] = graphs_ns_time_window
+                    else:
+                        graphs_time_window[graph_time_key].update(graphs_ns_time_window)
+                    config.pods.clear()
+                    count += 1
+            config.start = global_now_time
+            config.end = global_end_time
+            MetricCollector.collect_node(config, b_dir + '/node', config.collect)
+            # 非云边基于指标异常检测
+            anomalies = {}
+            anomalies_index = {}
+            anomaly_time_series = {}
+            for time_pair in time_pair_list:
+                time_key = str(time_pair[0]) + '-' + str(time_pair[1])
+                for ns in namespaces:
+                    data_folder = b_dir + '/' + ns + '/metrics'
+                    anomaly_list = anomalies.get(time_key, [])
+                    anomalies_ns, anomaly_time_series_index = get_anomaly_by_df(b_output_dir, data_folder, simple.label,
+                                                                                time_pair[0], time_pair[1])
+                    anomaly_list.extend(anomalies_ns)
+                    anomaly_list = list(set(anomaly_list))
+                    anomalies[time_key] = anomaly_list
+                    anomaly_time_series_list = anomaly_time_series.get(time_key, {})
+                    anomaly_time_series_list = {**anomaly_time_series_list, **anomaly_time_series_index}
+                    anomaly_time_series[time_key] = anomaly_time_series_list
+                anomalies_index[time_key] = {a: i for i, a in enumerate(anomalies[time_key])}
+            # 赋权ns子图
+            for time_window in graphs_time_window:
+                anomaly_index = anomalies_index[time_window]
+                t_index_time_window = time_pair_index[(int(time_window.split('-')[0]), int(time_window.split('-')[1]))]
+                for graph_time_window in graphs_time_window[time_window]:
+                    graph: nx.DiGraph = graphs_time_window[time_window][graph_time_window]
+                    begin_t = graph_time_window.split('-')[0]
+                    end_t = graph_time_window.split('-')[1]
+                    ns = graph_time_window[graph_time_window.index(end_t) + len(end_t) + 1:]
+                    graph_weight_ns(begin_t, end_t, graph, b_dir, ns)
+                # 合并混合部署图
+                graphs_combine: Dict[str, nx.DiGraph] = combine_ns_graphs(graphs_time_window[time_window])
+                graphs_anomaly_time_series_index = {}
+                graphs_anomaly_time_series_index_map = {}
+                graphs_index_time_map = {}
+                for time_combine in graphs_combine:
+                    graph_index_time_map = {}
+                    graph = graphs_combine[time_combine]
+                    begin_t = time_combine.split('-')[0]
+                    end_t = time_combine.split('-')[1]
 
 
-                def get_t(begin_t, t_index_time_window):
-                    index = len(t_index_time_window.keys()) - 1
-                    for i, t in enumerate(sorted(t_index_time_window.keys())):
-                        if int(begin_t) <= time_string_2_timestamp(t):
-                            index = i
-                            break
-                    return index
+                    def get_t(begin_t, t_index_time_window):
+                        index = len(t_index_time_window.keys()) - 1
+                        for i, t in enumerate(sorted(t_index_time_window.keys())):
+                            if int(begin_t) <= time_string_2_timestamp(t):
+                                index = i
+                                break
+                        return index
 
 
-                graph_weight(begin_t, end_t, graph, base_dir)
-                # graph dump
-                # graph_dump(graph, base_dir, begin_t + '-' + end_t)
-                for t in t_index_time_window:
-                    if int(begin_t) <= time_string_2_timestamp(t) <= int(end_t):
-                        graph_index_time_map[t_index_time_window[t] - get_t(begin_t, t_index_time_window)] = t
-                graphs_index_time_map[time_combine] = graph_index_time_map
-                # 赋值异常时序索引
-                anomalies_series_time_window = anomaly_time_series[time_window]
-                a_t_index = []
-                anomaly_time_series_index = {}
-                for anomaly in anomalies_series_time_window:
-                    anomaly_t_index = []
-                    anomaly_series_time_window = anomalies_series_time_window[anomaly]
-                    anomaly_series_time_window = [time_string_2_timestamp(a) for a in anomaly_series_time_window]
-                    if max(anomaly_series_time_window) < int(begin_t) or min(anomaly_series_time_window) > int(end_t):
-                        continue
-                    for t in anomaly_series_time_window:
-                        if int(begin_t) <= t <= int(end_t):
-                            a_t_index.append(
-                                t_index_time_window[timestamp_2_time_string(t)] - get_t(begin_t, t_index_time_window))
-                            anomaly_t_index.append(
-                                t_index_time_window[timestamp_2_time_string(t)] - get_t(begin_t, t_index_time_window))
-                    anomaly_time_series_index[anomaly] = anomaly_t_index
-                a_t_index = list(set(a_t_index))
-                graphs_anomaly_time_series_index[time_combine] = a_t_index
-                graphs_anomaly_time_series_index_map[time_combine] = anomaly_time_series_index
+                    graph_weight(begin_t, end_t, graph, b_dir)
+                    # graph dump
+                    graph_dump(graph, b_dir, begin_t + '-' + end_t)
+                    for t in t_index_time_window:
+                        if int(begin_t) <= time_string_2_timestamp(t) <= int(end_t):
+                            graph_index_time_map[t_index_time_window[t] - get_t(begin_t, t_index_time_window)] = t
+                    graphs_index_time_map[time_combine] = graph_index_time_map
+                    # 赋值异常时序索引
+                    anomalies_series_time_window = anomaly_time_series[time_window]
+                    a_t_index = []
+                    anomaly_time_series_index = {}
+                    for anomaly in anomalies_series_time_window:
+                        anomaly_t_index = []
+                        anomaly_series_time_window = anomalies_series_time_window[anomaly]
+                        anomaly_series_time_window = [time_string_2_timestamp(a) for a in anomaly_series_time_window]
+                        if max(anomaly_series_time_window) < int(begin_t) or min(anomaly_series_time_window) > int(end_t):
+                            continue
+                        for t in anomaly_series_time_window:
+                            if int(begin_t) <= t <= int(end_t):
+                                a_t_index.append(
+                                    t_index_time_window[timestamp_2_time_string(t)] - get_t(begin_t, t_index_time_window))
+                                anomaly_t_index.append(
+                                    t_index_time_window[timestamp_2_time_string(t)] - get_t(begin_t, t_index_time_window))
+                        anomaly_time_series_index[anomaly] = anomaly_t_index
+                    a_t_index = list(set(a_t_index))
+                    graphs_anomaly_time_series_index[time_combine] = a_t_index
+                    graphs_anomaly_time_series_index_map[time_combine] = anomaly_time_series_index
 
-            graphs_combine_index: Dict[str, GraphIndex] = {t_index: graph_index(graphs_combine[t_index]) for t_index in
-                                                           graphs_combine}
-            # 转化为dgl构建图网络栈
-            hetero_graphs_combine: Dict[str, HeteroWithGraphIndex] = get_hg(graphs_combine, graphs_combine_index,
-                                                                            anomalies,
-                                                                            graphs_anomaly_time_series_index,
-                                                                            graphs_anomaly_time_series_index_map
-                                                                            , graphs_index_time_map)
-            # train(simple.label, simple.root_cause, anomaly_index, hetero_graphs_combine, base_output_dir, config.train, rnn=config.rnn_type,
-            #       attention=config.attention)
-            _, global_g, adj_matrix, index_reverse_mapping, _, _, _, _ = run_graph_discovery_instance_sum_MicroCERC(
-                next(iter(graphs_combine.values())), None,
-                None, 'N', 'P2')
-            # pagerank = PageRank()
-            # pagerank_scores = pagerank.fit_transform(adj_matrix)
-            # pagerank_scores = {i: score for i, score in enumerate(pagerank_scores)}
-            pagerank_scores = nx.pagerank(global_g, max_iter=10000)
-            sorted_dict_node_pagerank = dict(sorted(pagerank_scores.items(), key=lambda item: item[1], reverse=True))
-            # sorted_dict_node_pagerank = {index_reverse_mapping[index]: sorted_dict_node_pagerank[index] for index in
-            #                              sorted_dict_node_pagerank}
-            with open(base_output_dir + '/result-' + simple.label + '.log', "a") as output_file:
-                top_k = top_k_node(sorted_dict_node_pagerank, simple.root_cause, output_file)
-                top_k_list.append(top_k)
+                graphs_combine_index: Dict[str, GraphIndex] = {t_index: graph_index(graphs_combine[t_index]) for t_index in
+                                                               graphs_combine}
+                # 转化为dgl构建图网络栈
+                hetero_graphs_combine: Dict[str, HeteroWithGraphIndex] = get_hg(graphs_combine, graphs_combine_index,
+                                                                                anomalies,
+                                                                                graphs_anomaly_time_series_index,
+                                                                                graphs_anomaly_time_series_index_map
+                                                                                , graphs_index_time_map)
+                # train(simple.label, simple.root_cause, anomaly_index, hetero_graphs_combine, b_output_dir, config.train, rnn=config.rnn_type,
+                #       attention=config.attention)
+                _, global_g, adj_matrix, index_reverse_mapping, _, _, _, _ = run_graph_discovery_instance_sum_MicroCERC(
+                    next(iter(graphs_combine.values())), None,
+                    None, 'N', 'P2')
+                # pagerank = PageRank()
+                # pagerank_scores = pagerank.fit_transform(adj_matrix)
+                # pagerank_scores = {i: score for i, score in enumerate(pagerank_scores)}
+                pagerank_scores = nx.pagerank(global_g, max_iter=10000)
+                sorted_dict_node_pagerank = dict(sorted(pagerank_scores.items(), key=lambda item: item[1], reverse=True))
+                # sorted_dict_node_pagerank = {index_reverse_mapping[index]: sorted_dict_node_pagerank[index] for index in
+                #                              sorted_dict_node_pagerank}
+                with open(b_output_dir + '/result-' + simple.label + '.log', "a") as output_file:
+                    top_k = top_k_node(sorted_dict_node_pagerank, simple.root_cause, output_file)
+                    top_k_list.append(top_k)
     print_pr(top_k_list)

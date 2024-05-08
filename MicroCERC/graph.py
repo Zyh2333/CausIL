@@ -164,7 +164,7 @@ def combine_ns_graphs(graphs_time_window: Dict[str, nx.DiGraph]) -> Dict[str, nx
 
 def graph_weight_ns(begin_time, end_time, graph: nx.DiGraph, dir, namespace):
     print('weight graph ns')
-    ns_dir = dir + '/' + namespace
+    ns_dir = dir + '/' + namespace + '/metrics'
     instance_df = util.df_time_limit_normalization(pd.read_csv(ns_dir + '/instance.csv'), begin_time, end_time)
     svc_df = util.df_time_limit_normalization(pd.read_csv(ns_dir + '/latency.csv'), begin_time, end_time)
 
@@ -425,12 +425,13 @@ def graph_dump(graph: nx.Graph, base_dir: str, dump_file):
             graph_copy.nodes[node]['data'] = node_data_dict
         except:
             anomaly_nodes.append(node)
-    json_converted = json_graph.node_link_data(graph_copy)
-    graph_dir = base_dir + '/graph/'
-    if not os.path.exists(graph_dir):
-        os.makedirs(graph_dir)
-    with open(graph_dir + dump_file + '.json', 'w') as outfile:
-        json.dump(json_converted, outfile, indent=4)
+    graph.remove_nodes_from(anomaly_nodes)
+    # json_converted = json_graph.node_link_data(graph_copy)
+    # graph_dir = base_dir + '/graph/'
+    # if not os.path.exists(graph_dir):
+    #     os.makedirs(graph_dir)
+    # with open(graph_dir + dump_file + '.json', 'w') as outfile:
+    #     json.dump(json_converted, outfile, indent=4)
 
 
 def graph_load(base_dir: str, file_name: str) -> nx.DiGraph:

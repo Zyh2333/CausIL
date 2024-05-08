@@ -168,38 +168,39 @@ def read_specific_logs(directory, top_k_list):
 
 
 # 测试代码
-top_k_list = []
-epoch_list = []
-time_list = []
-directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-0.0x/result-0.07'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-lstm'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-losses/result-51e-6-0.07'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-ablation-self'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-spaces-2'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result20240220'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/PC'
-# directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/microRCA_result'
-# read_logs(directory, top_k_list, epoch_list)
-read_specific_logs(directory, top_k_list)
-# read_effi_logs(directory, top_k_list, time_list, '1e-6')
-# print("Numbers extracted from log files:", top_k_list)
-print_pr(top_k_list)
-# print(str(sum(time_list) / len(time_list)) + 's')
-# print(str(sum(epoch_list) / len(epoch_list) * 2) + 's')
+if __name__ == '__main__':
+    top_k_list = []
+    epoch_list = []
+    time_list = []
+    directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-0.0x/result-0.07'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-lstm'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-losses/result-51e-6-0.07'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-ablation-self'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result-spaces-2'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/result/result20240220'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/PC'
+    # directory = '/Users/zhuyuhan/Documents/159-WHU/论文投递/MicroCERC/microRCA_result'
+    # read_logs(directory, top_k_list, epoch_list)
+    read_specific_logs(directory, top_k_list)
+    # read_effi_logs(directory, top_k_list, time_list, '1e-6')
+    # print("Numbers extracted from log files:", top_k_list)
+    print_pr(top_k_list)
+    # print(str(sum(time_list) / len(time_list)) + 's')
+    # print(str(sum(epoch_list) / len(epoch_list) * 2) + 's')
 
-# nums = [2, 2, 2, 3, 2, 2, 2, 2, 2, 3, 2, 4, 4, 2, 2, 4, 4, 4, 1]
-# CausalRCA C
-# nums = [2, 5, 2, 11, 4, 2, 11, 11, 4, 11, 3, 2, 11, 4, 2, 3, 1, 3, 3, 3]
-# print_pr(nums)
+    # nums = [2, 2, 2, 3, 2, 2, 2, 2, 2, 3, 2, 4, 4, 2, 2, 4, 4, 4, 1]
+    # CausalRCA C
+    # nums = [2, 5, 2, 11, 4, 2, 11, 11, 4, 11, 3, 2, 11, 4, 2, 3, 1, 3, 3, 3]
+    # print_pr(nums)
 
-# CausalRCA D
-# nums = [5, 11, 2, 11, 3, 2, 5, 3, 2, 4, 3, 2, 3, 11, 5, 1, 11, 3, 2, 4]
-# print_pr(nums)
+    # CausalRCA D
+    # nums = [5, 11, 2, 11, 3, 2, 5, 3, 2, 4, 3, 2, 3, 11, 5, 1, 11, 3, 2, 4]
+    # print_pr(nums)
 
-# MicroCERC gru C
-# nums = [2, 2, 2, 1, 3, 2, 2, 1, 2, 2, 3, 2, 4, 4, 2, 1, 11, 3, 4, 1]
-# print_pr(nums)
+    # MicroCERC gru C
+    # nums = [2, 2, 2, 1, 3, 2, 2, 1, 2, 2, 3, 2, 4, 4, 2, 1, 11, 3, 4, 1]
+    # print_pr(nums)
 
-# MicroCERC lstm bookinfo
-# nums = [1, 4, 2, 1, 8, 3, 8, 4, 6, 4, 5]
-# print_pr(nums)
+    # MicroCERC lstm bookinfo
+    # nums = [1, 4, 2, 1, 8, 3, 8, 4, 6, 4, 5]
+    # print_pr(nums)
